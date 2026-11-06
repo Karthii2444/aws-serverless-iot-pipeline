@@ -59,7 +59,7 @@ resource "aws_lambda_function" "detector" {
   timeout     = 15
   memory_size = 128
 
-environment {
+  environment {
     variables = {
       SNS_TOPIC_ARN       = aws_sns_topic.iot_alerts.arn
       SQS_QUEUE_URL       = aws_sqs_queue.telemetry_queue.id
