@@ -1,43 +1,89 @@
-# Execution Role for Simulator Lambda
+# ====================================================================
+# 1. IAM Role for Simulator Lambda (Lambda 0)
+# ====================================================================
 resource "aws_iam_role" "simulator_role" {
   name = "iot-simulator-execution-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "lambda.amazonaws.com"
-        }
-      }
-    ]
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
   })
 }
 
-# CloudWatch Logs Basic Execution
 resource "aws_iam_role_policy_attachment" "simulator_basic_logs" {
   role       = aws_iam_role.simulator_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Least-Privilege DynamoDB Write Policy
 resource "aws_iam_role_policy" "simulator_dynamodb_write" {
   name = "iot-simulator-dynamodb-write"
   role = aws_iam_role.simulator_role.id
 
   policy = jsonencode({
     Version = "2012-10-17"
+    Statement = [{
+      Sid      = "DynamoDBBatchWrite"
+      Effect   = "Allow"
+      Action   = ["dynamodb:PutItem", "dynamodb:BatchWriteItem"]
+      Resource = aws_dynamodb_table.iot_telemetry.arn
+    }]
+  })
+}
+
+# ====================================================================
+# 2. IAM Role for Stream Detector Lambda (Lambda 1)
+# ====================================================================
+resource "aws_iam_role" "detector_role" {
+  name = "iot-detector-execution-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "detector_basic_logs" {
+  role       = aws_iam_role.detector_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "detector_permissions" {
+  name = "iot-detector-stream-sns-sqs-policy"
+  role = aws_iam_role.detector_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "DynamoDBBatchWrite"
+        Sid    = "ReadDynamoDBStream"
         Effect = "Allow"
         Action = [
-          "dynamodb:PutItem",
-          "dynamodb:BatchWriteItem"
+          "dynamodb:GetRecords",
+          "dynamodb:GetShardIterator",
+          "dynamodb:DescribeStream",
+          "dynamodb:ListStreams"
         ]
-        Resource = aws_dynamodb_table.iot_telemetry.arn
+        Resource = aws_dynamodb_table.iot_telemetry.stream_arn
+      },
+      {
+        Sid      = "PublishSNSAlert"
+        Effect   = "Allow"
+        Action   = ["sns:Publish"]
+        Resource = aws_sns_topic.iot_alerts.arn
+      },
+      {
+        Sid      = "ForwardToSQS"
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = aws_sqs_queue.telemetry_queue.arn
       }
     ]
   })

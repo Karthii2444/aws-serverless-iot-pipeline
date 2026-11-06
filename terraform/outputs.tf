@@ -9,6 +9,21 @@ output "dynamodb_table_name" {
 }
 
 output "dynamodb_stream_arn" {
-  description = "ARN of the DynamoDB Stream (used for Lambda 1 trigger)"
+  description = "ARN of the DynamoDB Stream"
   value       = aws_dynamodb_table.iot_telemetry.stream_arn
+}
+
+output "sns_alerts_topic_arn" {
+  description = "ARN of the SNS Topic for critical alerts"
+  value       = aws_sns_topic.iot_alerts.arn
+}
+
+output "sqs_main_queue_url" {
+  description = "URL of the main SQS telemetry queue"
+  value       = aws_sqs_queue.telemetry_queue.id
+}
+
+output "sqs_dlq_url" {
+  description = "URL of the SQS Dead-Letter Queue"
+  value       = aws_sqs_queue.telemetry_dlq.id
 }
