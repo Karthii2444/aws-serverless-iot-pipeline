@@ -3,3 +3,4 @@
 # these pinned versions are for local/CI unit testing with mocks.
 boto3==1.35.40
 botocore==1.35.40
+fpdf2==2.8.2

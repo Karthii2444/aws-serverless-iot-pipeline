@@ -36,6 +36,9 @@ jobs:
       - name: Test Archiver Lambda
         run: python -m unittest discover -s archiver-lambda/test
 
+      - name: Test Reporter Lambda
+        run: python -m unittest discover -s reporter-lambda/test
+
   terraform-checks:
     name: Validate Terraform Infrastructure
     runs-on: ubuntu-latest
