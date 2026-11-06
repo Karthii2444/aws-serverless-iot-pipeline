@@ -1,34 +1,36 @@
 # ====================================================================
-# 1. Simulator Lambda (Lambda 0)
+# 3. Batch Archiver Lambda (Lambda 2)
 # ====================================================================
-data "archive_file" "simulator_zip" {
+data "archive_file" "archiver_zip" {
   type        = "zip"
-  source_dir  = "${path.module}/../simulator-lambda/src"
-  output_path = "${path.module}/simulator.zip"
+  source_dir  = "${path.module}/../archiver-lambda/src"
+  output_path = "${path.module}/archiver.zip"
 }
 
-resource "aws_lambda_function" "simulator" {
-  function_name    = "iot-simulator"
-  role             = aws_iam_role.simulator_role.arn
+resource "aws_lambda_function" "archiver" {
+  function_name    = "iot-batch-archiver"
+  role             = aws_iam_role.archiver_role.arn
   handler          = "main.lambda_handler"
   runtime          = "python3.12"
-  filename         = data.archive_file.simulator_zip.output_path
-  source_code_hash = data.archive_file.simulator_zip.output_base64sha256
+  filename         = data.archive_file.archiver_zip.output_path
+  source_code_hash = data.archive_file.archiver_zip.output_base64sha256
 
-  timeout     = 15
-  memory_size = 128
+  timeout     = 30
+  memory_size = 256
 
   environment {
     variables = {
-      TABLE_NAME = aws_dynamodb_table.iot_telemetry.name
-      LOG_LEVEL  = "INFO"
+      DATA_LAKE_BUCKET = aws_s3_bucket.data_lake.id
+      LOG_LEVEL        = "INFO"
     }
   }
 }
 
-resource "aws_lambda_function_url" "simulator_url" {
-  function_name      = aws_lambda_function.simulator.function_name
-  authorization_type = "NONE"
+# Connect SQS Main Queue to Archiver Lambda with Partial Batch Response
+resource "aws_lambda_event_source_mapping" "sqs_to_archiver" {
+  event_source_arn = aws_sqs_queue.telemetry_queue.arn
+  function_name    = aws_lambda_function.archiver.arn
+  batch_size       = 10
 
   cors {
     allow_credentials = false
@@ -75,4 +77,6 @@ resource "aws_lambda_event_source_mapping" "dynamodb_stream_trigger" {
   function_name     = aws_lambda_function.detector.arn
   starting_position = "LATEST"
   batch_size        = 25
+  # Enables partial batch failure reporting (ReportBatchItemFailures contract)
+  function_response_types = ["ReportBatchItemFailures"]
 }
