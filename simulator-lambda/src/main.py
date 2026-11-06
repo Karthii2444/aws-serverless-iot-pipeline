@@ -5,7 +5,6 @@ import uuid
 from datetime import datetime, timezone
 import boto3
 
-# Initialize DynamoDB resource outside handler for connection reuse
 dynamodb = boto3.resource('dynamodb')
 table_name = os.environ.get('TABLE_NAME', 'iot-telemetry')
 table = dynamodb.Table(table_name)
@@ -14,10 +13,6 @@ DEVICES = [f"sensor-press-{i:03d}" for i in range(1, 6)]
 DEVICE_TYPE = "hydraulic_press"
 
 def lambda_handler(event, context):
-    """
-    HTTP-triggered Lambda to generate synthetic IoT telemetry records.
-    Accepts JSON body or query parameters to control anomaly and error injection.
-    """
     params = {}
     if isinstance(event, dict):
         if event.get('body'):
@@ -32,6 +27,17 @@ def lambda_handler(event, context):
     force_anomaly = bool(params.get('force_anomaly', False))
     force_error = bool(params.get('force_error', False))
 
+    # Determine how many special records to inject (e.g., 2 or 3 for a batch of 20)
+    target_count = min(random.randint(2, 3) if count >= 10 else 1, count)
+
+    # Pick unique random indices across the batch (e.g., [3, 14, 19])
+    anomaly_indices = set(random.sample(range(count), target_count)) if force_anomaly else set()
+    
+    # Pick distinct error indices that don't collide with anomalies
+    available_for_error = [idx for idx in range(count) if idx not in anomaly_indices]
+    error_count = min(target_count, len(available_for_error))
+    error_indices = set(random.sample(available_for_error, error_count)) if force_error else set()
+
     records_written = 0
     anomalies_created = 0
     errors_injected = 0
@@ -43,8 +49,8 @@ def lambda_handler(event, context):
             timestamp = datetime.now(timezone.utc).isoformat()
             telemetry_id = str(uuid.uuid4())
 
-            # 1. Deliberate Schema Error (tests downstream SQS DLQ)
-            if force_error and i == 0:
+            # 1. Randomized Deliberate Schema Error (tests SQS DLQ)
+            if i in error_indices:
                 item = {
                     'device_id': device_id,
                     'timestamp': timestamp,
@@ -58,8 +64,8 @@ def lambda_handler(event, context):
                 }
                 errors_injected += 1
 
-            # 2. Critical Anomaly (tests downstream SNS real-time alert)
-            elif force_anomaly and i == 0:
+            # 2. Randomized Critical Anomaly (tests SNS alert)
+            elif i in anomaly_indices:
                 item = {
                     'device_id': device_id,
                     'timestamp': timestamp,
@@ -67,8 +73,8 @@ def lambda_handler(event, context):
                     'device_type': DEVICE_TYPE,
                     'temperature_c': round(random.uniform(92.0, 115.0), 2),  # > 85.0 C threshold
                     'vibration_hz': round(random.uniform(130.0, 180.0), 2),  # > 120.0 Hz threshold
-                    'pressure_psi': 118.0,
-                    'battery_pct': 74,
+                    'pressure_psi': round(random.uniform(115.0, 130.0), 1),
+                    'battery_pct': random.randint(40, 80),
                     'status': 'ANOMALY'
                 }
                 anomalies_created += 1
