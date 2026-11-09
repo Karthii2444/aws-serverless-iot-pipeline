@@ -18,17 +18,17 @@ resource "aws_api_gateway_resource" "simulate" {
 # 3. Method: POST (Enforces API Key requirement)
 resource "aws_api_gateway_method" "post_simulate" {
   rest_api_id      = aws_api_gateway_rest_api.simulator_api.id
-  resource_id     = aws_api_gateway_resource.simulate.id
-  http_method     = "POST"
-  authorization   = "NONE"
+  resource_id      = aws_api_gateway_resource.simulate.id
+  http_method      = "POST"
+  authorization    = "NONE"
   api_key_required = true
 }
 
 # 4. Lambda Proxy Integration
 resource "aws_api_gateway_integration" "lambda_integration" {
   rest_api_id             = aws_api_gateway_rest_api.simulator_api.id
-  resource_id            = aws_api_gateway_resource.simulate.id
-  http_method            = aws_api_gateway_method.post_simulate.http_method
+  resource_id             = aws_api_gateway_resource.simulate.id
+  http_method             = aws_api_gateway_method.post_simulate.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.simulator.invoke_arn
