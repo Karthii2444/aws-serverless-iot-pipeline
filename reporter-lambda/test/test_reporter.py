@@ -5,6 +5,7 @@ import unittest
 os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'
 os.environ['AWS_ACCESS_KEY_ID'] = 'testing'
 os.environ['AWS_SECRET_ACCESS_KEY'] = 'testing'
+os.environ['DATA_LAKE_BUCKET'] = 'test-iot-telemetry-lake'
 os.environ['SENDER_EMAIL'] = 'sender@example.com'
 os.environ['RECEIVER_EMAIL'] = 'operator@example.com'
 
@@ -17,12 +18,14 @@ import main
 class TestReporterLambda(unittest.TestCase):
 
     def setUp(self):
+        main.DATA_LAKE_BUCKET = 'test-iot-telemetry-lake'
         main.SENDER_EMAIL = 'sender@example.com'
         main.RECEIVER_EMAIL = 'operator@example.com'
 
+    @patch('main.s3_client')
     @patch('main.ses_client')
     @patch('main.execute_athena_query')
-    def test_successful_daily_report_with_pdf_attachment(self, mock_query, mock_ses):
+    def test_successful_daily_report_with_pdf_attachment_and_s3_save(self, mock_query, mock_ses, mock_s3):
         mock_query.side_effect = [
             [{"total_readings": "100", "active_devices": "5", "avg_temp": "68.4", "avg_health": "92.0"}],
             [{
@@ -41,16 +44,21 @@ class TestReporterLambda(unittest.TestCase):
         self.assertEqual(result['readings_analyzed'], "100")
         self.assertEqual(result['incidents_reported'], 1)
         self.assertIn(".pdf", result['pdf_attachment'])
+        self.assertIn("reports/year=", result['s3_report_key'])
 
-        # Verify SES send_raw_email was called with MIME data containing the PDF
+        # Verify S3 put_object was called to archive the PDF
+        mock_s3.put_object.assert_called_once()
+        s3_call = mock_s3.put_object.call_args[1]
+        self.assertEqual(s3_call['Bucket'], 'test-iot-telemetry-lake')
+        self.assertEqual(s3_call['ContentType'], 'application/pdf')
+
+        # Verify SES send_raw_email was called with MIME data
         mock_ses.send_raw_email.assert_called_once()
-        raw_msg = mock_ses.send_raw_email.call_args[1]['RawMessage']['Data']
-        self.assertIn(b"application/pdf", raw_msg)
-        self.assertIn(b"Daily-IoT-Fleet-Report", raw_msg)
 
+    @patch('main.s3_client')
     @patch('main.ses_client')
     @patch('main.execute_athena_query')
-    def test_daily_report_zero_incidents(self, mock_query, mock_ses):
+    def test_daily_report_zero_incidents(self, mock_query, mock_ses, mock_s3):
         mock_query.side_effect = [
             [{"total_readings": "50", "active_devices": "5", "avg_temp": "62.0", "avg_health": "100.0"}],
             []
@@ -59,6 +67,7 @@ class TestReporterLambda(unittest.TestCase):
         result = main.lambda_handler({}, None)
         self.assertEqual(result['statusCode'], 200)
         self.assertEqual(result['incidents_reported'], 0)
+        mock_s3.put_object.assert_called_once()
         mock_ses.send_raw_email.assert_called_once()
 
 

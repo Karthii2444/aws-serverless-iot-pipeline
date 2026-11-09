@@ -15,9 +15,11 @@ logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
 athena_client = boto3.client("athena")
 ses_client = boto3.client("ses")
+s3_client = boto3.client("s3")
 
 ATHENA_DATABASE = os.environ.get("ATHENA_DATABASE", "iot_telemetry_db")
 ATHENA_WORKGROUP = os.environ.get("ATHENA_WORKGROUP", "iot-analytics-workgroup")
+DATA_LAKE_BUCKET = os.environ.get("DATA_LAKE_BUCKET", "")
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "")
 RECEIVER_EMAIL = os.environ.get("RECEIVER_EMAIL", "")
 
@@ -100,8 +102,30 @@ def lambda_handler(event, context):
     html_content = render_executive_report_html(report_date, fleet_summary, incidents)
     pdf_bytes = generate_pdf_report(report_date, fleet_summary, incidents)
     pdf_filename = f"Daily-IoT-Fleet-Report-{report_date}.pdf"
+    s3_report_key = None
 
-    # 4. Dispatch Email with PDF Attachment via Amazon SES
+    # 4. Save PDF Document to Amazon S3 Data Lake under reports/
+    if DATA_LAKE_BUCKET:
+        s3_report_key = f"reports/year={target_year}/month={target_month}/{pdf_filename}"
+        try:
+            s3_client.put_object(
+                Bucket=DATA_LAKE_BUCKET,
+                Key=s3_report_key,
+                Body=pdf_bytes,
+                ContentType="application/pdf",
+                Metadata={
+                    "report-date": report_date,
+                    "readings-analyzed": str(fleet_summary.get("total_readings", "0")),
+                    "incidents-reported": str(len(incidents)),
+                    "generated-by": "iot-daily-reporter"
+                }
+            )
+            logger.info("Saved PDF report to S3 | bucket=%s | key=%s", DATA_LAKE_BUCKET, s3_report_key)
+        except Exception as exc:
+            logger.error("Failed saving PDF report to S3 | error=%s", str(exc))
+            raise
+
+    # 5. Dispatch Email with PDF Attachment via Amazon SES
     if SENDER_EMAIL and RECEIVER_EMAIL:
         try:
             send_email_with_pdf_attachment(
@@ -122,5 +146,6 @@ def lambda_handler(event, context):
         "report_date": report_date,
         "readings_analyzed": fleet_summary.get("total_readings", "0"),
         "incidents_reported": len(incidents),
-        "pdf_attachment": pdf_filename
+        "pdf_attachment": pdf_filename,
+        "s3_report_key": s3_report_key
     }
