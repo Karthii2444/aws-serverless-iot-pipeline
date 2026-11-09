@@ -107,6 +107,10 @@ def lambda_handler(event, context):
     # 4. Save PDF Document to Amazon S3 Data Lake under reports/
     if DATA_LAKE_BUCKET:
         s3_report_key = f"reports/year={target_year}/month={target_month}/{pdf_filename}"
+        logger.info(
+            "Attempting to archive PDF report to S3 | bucket=%s | key=%s | size_bytes=%d",
+            DATA_LAKE_BUCKET, s3_report_key, len(pdf_bytes)
+        )
         try:
             s3_client.put_object(
                 Bucket=DATA_LAKE_BUCKET,
@@ -120,10 +124,12 @@ def lambda_handler(event, context):
                     "generated-by": "iot-daily-reporter"
                 }
             )
-            logger.info("Saved PDF report to S3 | bucket=%s | key=%s", DATA_LAKE_BUCKET, s3_report_key)
+            logger.info("Successfully archived PDF report to S3 | bucket=%s | key=%s", DATA_LAKE_BUCKET, s3_report_key)
         except Exception as exc:
-            logger.error("Failed saving PDF report to S3 | error=%s", str(exc))
+            logger.error("Failed saving PDF report to S3 | bucket=%s | error=%s", DATA_LAKE_BUCKET, str(exc))
             raise
+    else:
+        logger.warning("DATA_LAKE_BUCKET environment variable is empty! Skipping S3 PDF archive.")
 
     # 5. Dispatch Email with PDF Attachment via Amazon SES
     if SENDER_EMAIL and RECEIVER_EMAIL:
