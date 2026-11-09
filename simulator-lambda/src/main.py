@@ -4,6 +4,7 @@ import random
 import uuid
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal
 import boto3
 
 # Configure production logger for Amazon CloudWatch
@@ -71,9 +72,9 @@ def lambda_handler(event, context):
                         'timestamp': timestamp,
                         'telemetry_id': telemetry_id,
                         'device_type': DEVICE_TYPE,
-                        'temperature_c': "CORRUPTED_STRING_VALUE",
-                        'vibration_hz': 40.0,
-                        'pressure_psi': 100.0,
+                        'temperature_c': "CORRUPTED_STRING_VALUE",  # Violates float schema in Lambda 2
+                        'vibration_hz': Decimal("40.0"),
+                        'pressure_psi': Decimal("100.0"),
                         'battery_pct': 80,
                         'status': 'ERROR'
                     }
@@ -85,8 +86,9 @@ def lambda_handler(event, context):
 
                 # 2. Randomized Critical Anomaly (tests SNS alert)
                 elif i in anomaly_indices:
-                    temp = round(random.uniform(92.0, 115.0), 2)
-                    vib = round(random.uniform(130.0, 180.0), 2)
+                    temp = Decimal(str(round(random.uniform(92.0, 115.0), 2)))
+                    vib = Decimal(str(round(random.uniform(130.0, 180.0), 2)))
+                    pressure = Decimal(str(round(random.uniform(115.0, 130.0), 1)))
                     item = {
                         'device_id': device_id,
                         'timestamp': timestamp,
@@ -94,26 +96,29 @@ def lambda_handler(event, context):
                         'device_type': DEVICE_TYPE,
                         'temperature_c': temp,
                         'vibration_hz': vib,
-                        'pressure_psi': round(random.uniform(115.0, 130.0), 1),
+                        'pressure_psi': pressure,
                         'battery_pct': random.randint(40, 80),
                         'status': 'ANOMALY'
                     }
                     anomalies_created += 1
                     logger.warning(
                         "Injected critical anomaly | index=%d | telemetry_id=%s | device_id=%s | temp=%s | vib=%s",
-                        i, telemetry_id, device_id, temp, vib
+                        i, telemetry_id, device_id, str(temp), str(vib)
                     )
 
                 # 3. Standard Telemetry (Happy Path)
                 else:
+                    temp = Decimal(str(round(random.uniform(55.0, 75.0), 2)))
+                    vib = Decimal(str(round(random.uniform(20.0, 50.0), 2)))
+                    pressure = Decimal(str(round(random.uniform(95.0, 105.0), 1)))
                     item = {
                         'device_id': device_id,
                         'timestamp': timestamp,
                         'telemetry_id': telemetry_id,
                         'device_type': DEVICE_TYPE,
-                        'temperature_c': round(random.uniform(55.0, 75.0), 2),
-                        'vibration_hz': round(random.uniform(20.0, 50.0), 2),
-                        'pressure_psi': round(random.uniform(95.0, 105.0), 1),
+                        'temperature_c': temp,
+                        'vibration_hz': vib,
+                        'pressure_psi': pressure,
                         'battery_pct': random.randint(50, 100),
                         'status': 'HEALTHY'
                     }
