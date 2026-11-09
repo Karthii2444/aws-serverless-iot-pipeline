@@ -135,6 +135,7 @@ resource "aws_lambda_function" "reporter" {
     variables = {
       ATHENA_DATABASE  = aws_athena_database.iot_db.name
       ATHENA_WORKGROUP = aws_athena_workgroup.iot_workgroup.name
+      DATA_LAKE_BUCKET = aws_s3_bucket.data_lake.id
       SENDER_EMAIL     = var.alert_email
       RECEIVER_EMAIL   = var.alert_email
       LOG_LEVEL        = "INFO"
