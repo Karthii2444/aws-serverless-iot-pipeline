@@ -7,7 +7,7 @@ resource "random_string" "bucket_suffix" {
 
 # Main S3 Data Lake Bucket for telemetry/ and incidents/
 resource "aws_s3_bucket" "data_lake" {
-  bucket = "iot-telemetry-lake-${random_string.bucket_suffix.result}"
+  bucket        = "iot-telemetry-lake-${random_string.bucket_suffix.result}"
   force_destroy = true
 
   tags = {
