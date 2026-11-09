@@ -54,3 +54,10 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Ignore all vendored third-party dependencies in reporter-lambda/src
+reporter-lambda/src/*
+!reporter-lambda/src/main.py
+!reporter-lambda/src/athena_client.py
+!reporter-lambda/src/email_template.py
+!reporter-lambda/src/pdf_generator.py
