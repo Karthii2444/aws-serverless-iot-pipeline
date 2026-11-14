@@ -5,6 +5,9 @@ from boto3.dynamodb.types import TypeDeserializer
 
 deserializer = TypeDeserializer()
 
+# Parse plant metadata once at module load time for reuse across all batch records
+_METADATA_MAP = json.loads(os.environ.get("PLANT_METADATA_JSON", "{}"))
+
 
 def unmarshal_dynamodb_image(dynamodb_image):
     """Converts DynamoDB Stream typed dictionary into standard Python primitives."""
@@ -19,12 +22,12 @@ def unmarshal_dynamodb_image(dynamodb_image):
 
 def get_asset_metadata(device_id):
     """
-    Reads the complete plant metadata JSON from the PLANT_METADATA_JSON env var
-    and returns the plant and team for the given device_id.
+    Looks up the plant and maintenance team for the given device_id.
+    Uses the module-level _METADATA_MAP parsed once at cold start from
+    the PLANT_METADATA_JSON environment variable — avoids redundant
+    json.loads() on every record in a batch.
     """
-    raw_json = os.environ.get("PLANT_METADATA_JSON", "{}")
-    metadata_map = json.loads(raw_json)
-    return metadata_map.get(device_id, {"plant": "Unknown-Facility", "team": "Unassigned"})
+    return _METADATA_MAP.get(device_id, {"plant": "Unknown-Facility", "team": "Unassigned"})
 
 
 def evaluate_machine_health(record):
