@@ -50,11 +50,22 @@ def send_email_with_pdf_attachment(sender, receiver, subject, html_body, pdf_byt
     )
 
 
+def _safe_int(value, name):
+    """Validates a partition value is a plain integer string — prevents SQL injection."""
+    try:
+        return str(int(value))
+    except (ValueError, TypeError):
+        raise ValueError(f"Invalid partition value for '{name}': {value!r}")
+
+
 def lambda_handler(event, context):
     now = datetime.now(timezone.utc)
-    target_year = f"{now.year}"
-    target_month = f"{now.month:02d}"
-    target_day = f"{now.day:02d}"
+    target_year = _safe_int(now.year, "year")
+    target_month = _safe_int(now.month, "month")
+    target_day = _safe_int(now.day, "day")
+    # Zero-pad month and day for Hive partition compatibility
+    target_month = target_month.zfill(2)
+    target_day = target_day.zfill(2)
     report_date = f"{target_year}-{target_month}-{target_day}"
 
     logger.info("Starting daily report generation for date: %s", report_date)
