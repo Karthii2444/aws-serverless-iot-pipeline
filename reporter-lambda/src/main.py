@@ -14,6 +14,7 @@ logger = logging.getLogger("iot-daily-reporter")
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
 athena_client = boto3.client("athena")
+glue_client = boto3.client("glue")
 ses_client = boto3.client("ses")
 s3_client = boto3.client("s3")
 
@@ -22,6 +23,29 @@ ATHENA_WORKGROUP = os.environ.get("ATHENA_WORKGROUP", "iot-analytics-workgroup")
 DATA_LAKE_BUCKET = os.environ.get("DATA_LAKE_BUCKET", "")
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "")
 RECEIVER_EMAIL = os.environ.get("RECEIVER_EMAIL", "")
+
+REQUIRED_TABLES = ("telemetry", "incidents")
+
+
+def verify_tables_exist(client, database, tables):
+    """
+    Pre-flight guard: verifies required Glue/Athena tables exist before querying.
+    Fails fast with a clear RuntimeError if tables are missing, rather than
+    waiting for Athena queries to fail or generating empty/corrupted reports.
+    """
+    for table in tables:
+        try:
+            client.get_table(DatabaseName=database, Name=table)
+            logger.debug("Verified table '%s' exists in database '%s'", table, database)
+        except Exception as exc:
+            logger.error(
+                "Required table '%s' not found or inaccessible in Glue database '%s' | error=%s",
+                table, database, str(exc)
+            )
+            raise RuntimeError(
+                f"Required Athena/Glue table '{table}' does not exist in database '{database}'. "
+                f"Ensure Terraform has provisioned the Glue catalog tables: {exc}"
+            ) from exc
 
 
 def send_email_with_pdf_attachment(sender, receiver, subject, html_body, pdf_bytes, filename):
@@ -70,6 +94,9 @@ def lambda_handler(event, context):
 
     logger.info("Starting daily report generation for date: %s", report_date)
 
+    # Pre-flight guard: ensure required tables exist before executing queries
+    verify_tables_exist(glue_client, ATHENA_DATABASE, REQUIRED_TABLES)
+
     # 1. Query Fleet Summary
     fleet_query = f"""
     SELECT
@@ -83,10 +110,12 @@ def lambda_handler(event, context):
 
     try:
         fleet_results = execute_athena_query(athena_client, fleet_query, ATHENA_DATABASE, ATHENA_WORKGROUP)
-        fleet_summary = fleet_results[0] if fleet_results else {}
+        fleet_summary = fleet_results[0] if fleet_results else {
+            "total_readings": "0", "active_devices": "0", "avg_temp": "0.0", "avg_health": "100"
+        }
     except Exception as exc:
-        logger.warning("Fleet summary query failed | error=%s", str(exc))
-        fleet_summary = {"total_readings": "0", "active_devices": "0", "avg_temp": "0.0", "avg_health": "100"}
+        logger.error("Fleet summary query failed | database=%s | error=%s", ATHENA_DATABASE, str(exc))
+        raise RuntimeError(f"Fleet summary query failed on '{ATHENA_DATABASE}.telemetry': {exc}") from exc
 
     # 2. Query Incidents
     incidents_query = f"""
@@ -106,8 +135,8 @@ def lambda_handler(event, context):
     try:
         incidents = execute_athena_query(athena_client, incidents_query, ATHENA_DATABASE, ATHENA_WORKGROUP)
     except Exception as exc:
-        logger.warning("Incidents query failed | error=%s", str(exc))
-        incidents = []
+        logger.error("Incidents query failed | database=%s | error=%s", ATHENA_DATABASE, str(exc))
+        raise RuntimeError(f"Incidents query failed on '{ATHENA_DATABASE}.incidents': {exc}") from exc
 
     # 3. Render HTML Dashboard & Compile PDF Document
     html_content = render_executive_report_html(report_date, fleet_summary, incidents)

@@ -22,10 +22,12 @@ class TestReporterLambda(unittest.TestCase):
         main.SENDER_EMAIL = 'sender@example.com'
         main.RECEIVER_EMAIL = 'operator@example.com'
 
+    @patch('main.glue_client')
     @patch('main.s3_client')
     @patch('main.ses_client')
     @patch('main.execute_athena_query')
-    def test_successful_daily_report_with_pdf_attachment_and_s3_save(self, mock_query, mock_ses, mock_s3):
+    def test_successful_daily_report_with_pdf_attachment_and_s3_save(self, mock_query, mock_ses, mock_s3, mock_glue):
+        mock_glue.get_table.return_value = {"Table": {"Name": "mock"}}
         mock_query.side_effect = [
             [{"total_readings": "100", "active_devices": "5", "avg_temp": "68.4", "avg_health": "92.0"}],
             [{
@@ -55,10 +57,12 @@ class TestReporterLambda(unittest.TestCase):
         # Verify SES send_raw_email was called with MIME data
         mock_ses.send_raw_email.assert_called_once()
 
+    @patch('main.glue_client')
     @patch('main.s3_client')
     @patch('main.ses_client')
     @patch('main.execute_athena_query')
-    def test_daily_report_zero_incidents(self, mock_query, mock_ses, mock_s3):
+    def test_daily_report_zero_incidents(self, mock_query, mock_ses, mock_s3, mock_glue):
+        mock_glue.get_table.return_value = {"Table": {"Name": "mock"}}
         mock_query.side_effect = [
             [{"total_readings": "50", "active_devices": "5", "avg_temp": "62.0", "avg_health": "100.0"}],
             []
@@ -69,6 +73,28 @@ class TestReporterLambda(unittest.TestCase):
         self.assertEqual(result['incidents_reported'], 0)
         mock_s3.put_object.assert_called_once()
         mock_ses.send_raw_email.assert_called_once()
+
+    @patch('main.glue_client')
+    def test_missing_table_raises_runtime_error(self, mock_glue):
+        """Verifies Lambda fails fast and raises RuntimeError when Athena/Glue table is missing."""
+        mock_glue.get_table.side_effect = Exception("EntityNotFoundException: Table not found")
+
+        with self.assertRaises(RuntimeError) as ctx:
+            main.lambda_handler({}, None)
+
+        self.assertIn("does not exist in database", str(ctx.exception))
+
+    @patch('main.glue_client')
+    @patch('main.execute_athena_query')
+    def test_athena_query_failure_raises_error(self, mock_query, mock_glue):
+        """Verifies Lambda fails and raises RuntimeError when Athena SQL execution fails."""
+        mock_glue.get_table.return_value = {"Table": {"Name": "mock"}}
+        mock_query.side_effect = RuntimeError("Athena query failed with FAILED: SYNTAX_ERROR")
+
+        with self.assertRaises(RuntimeError) as ctx:
+            main.lambda_handler({}, None)
+
+        self.assertIn("Fleet summary query failed", str(ctx.exception))
 
 
 if __name__ == '__main__':
