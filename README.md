@@ -296,6 +296,45 @@ terraform destroy
 
 ---
 
+## Athena Table Setup
+
+The Athena **database**, **workgroup**, and both **external tables** (`telemetry` and `incidents`) are fully provisioned by Terraform via the AWS Glue Data Catalog — no manual steps in the query editor are required.
+
+After `terraform apply`, the following are ready to query immediately:
+
+| Resource | Name |
+| :--- | :--- |
+| Athena Database | `iot_telemetry_db` |
+| Athena Workgroup | `iot-analytics-workgroup` |
+| Table (all readings) | `iot_telemetry_db.telemetry` → `s3://<bucket>/telemetry/` |
+| Table (anomalies only) | `iot_telemetry_db.incidents` → `s3://<bucket>/incidents/` |
+
+### Loading Partitions After Data Arrives
+
+The Archiver Lambda writes data into Hive-partitioned S3 paths (`year=/month=/day=/hour=`). After the first batch of telemetry flows through the pipeline, run the following once in the **Athena Query Editor** to register the new partitions:
+
+```sql
+MSCK REPAIR TABLE iot_telemetry_db.telemetry;
+MSCK REPAIR TABLE iot_telemetry_db.incidents;
+```
+
+> **Note:** Re-run `MSCK REPAIR TABLE` whenever new date or hour partitions are created (e.g., the following day). This is required for the Reporter Lambda's partition-pruned queries (`WHERE year = ... AND month = ... AND day = ...`) to return correct results.
+
+### Verify End-to-End with a Test Query
+
+Open the **Athena Query Editor**, select workgroup `iot-analytics-workgroup` and database `iot_telemetry_db`, then run:
+
+```sql
+SELECT device_id, severity, health_score, evaluated_at
+FROM iot_telemetry_db.telemetry
+ORDER BY evaluated_at DESC
+LIMIT 10;
+```
+
+If rows are returned, the full pipeline is working end-to-end. ✅
+
+---
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](https://www.google.com/search?q=LICENSE) file for details.
