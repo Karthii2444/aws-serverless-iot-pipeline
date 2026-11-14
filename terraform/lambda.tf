@@ -26,18 +26,9 @@ resource "aws_lambda_function" "simulator" {
   }
 }
 
-resource "aws_lambda_function_url" "simulator_url" {
-  function_name      = aws_lambda_function.simulator.function_name
-  authorization_type = "NONE"
-
-  cors {
-    allow_credentials = false
-    allow_origins     = ["*"]
-    allow_methods     = ["GET", "POST"]
-    allow_headers     = ["content-type"]
-    max_age           = 86400
-  }
-}
+# NOTE: Lambda Function URL removed — the simulator is exclusively accessed
+# through the API Gateway endpoint (with x-api-key auth + usage plan throttling).
+# A public unauthenticated Function URL would bypass all API Gateway controls.
 
 # ====================================================================
 # 2. Stream Detector Lambda (Lambda 1)
@@ -144,9 +135,11 @@ resource "aws_lambda_function" "reporter" {
 }
 
 resource "aws_cloudwatch_event_rule" "daily_report_schedule" {
-  name                = "iot-daily-report-cron"
-  description         = "Triggers Lambda 3 daily to compile Athena executive report"
-  schedule_expression = "cron(0 0 * * ? *)"
+  name        = "iot-daily-report-cron"
+  description = "Triggers Lambda 3 daily to compile Athena executive report"
+  # Runs at 01:00 UTC daily — allows the previous day's data to fully settle
+  # in S3 before Athena queries it (avoids midnight boundary race in IST/other zones)
+  schedule_expression = "cron(0 1 * * ? *)"
 }
 
 resource "aws_cloudwatch_event_target" "trigger_reporter_lambda" {
