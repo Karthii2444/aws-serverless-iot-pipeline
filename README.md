@@ -3,7 +3,7 @@
 [](https://aws.amazon.com/)
 [](https://www.terraform.io/)
 [](https://www.python.org/)
-[License](https://www.google.com/search?q=LICENSE)
+[License: MIT](LICENSE)
 [](https://aws.amazon.com/free/)
 
 A production-grade, event-driven IoT data pipeline built entirely on AWS serverless services and provisioned via Terraform. 
@@ -298,4 +298,4 @@ terraform destroy
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](https://www.google.com/search?q=LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
